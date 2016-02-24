@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/base64"
 	"fmt"
@@ -14,30 +13,39 @@ import (
 // please see the Cloud Vision Documentation to get setup
 // https://cloud.google.com/vision/docs/getting-started
 
-//TODO got replace panics with something better
-
 func main() {
 	fmt.Println("Initializing marmot checker")
 	mux := http.NewServeMux()
-	mux.HandleFunc("/post/", postIt)
-	http.ListenAndServe(":2332", mux)
+	mux.HandleFunc("/postImage/", PostImage)
+
+	port := "2332"
+	p := fmt.Sprintf(":%s", port)
+	fmt.Printf("Listening on port: %s\n", port)
+	http.ListenAndServe(p, mux)
 }
 
-func postIt(w http.ResponseWriter, r *http.Request) {
+// receives a png image, & sends it to the Google Cloud Vision API
+// for processing. returns closest match result & checks
+// it against a []string of allowed match names.
+// if a match is found, file is posted to the toadserver
+// which is required to be running on the host
+// the toadserver creates an index of the filename alongside
+// the IPFS hash of the file and adds the file to IPFS
+func PostImage(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 		fmt.Println("Receving POST request")
-		//marshal things
-		//log 'em
+		//get the
 		urlPathString := r.URL.Path[1:]
 		fileName := strings.Split(urlPathString, "/")[1]
 
-		fmt.Printf("Filename to register:\t\t%s\n", fileName)
+		fmt.Printf("Filename:\t\t%s\n", fileName)
 
 		body, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			fmt.Printf("error reading file body: %v\n", err)
 			os.Exit(1)
 		}
+		defer r.Body.Close()
 
 		imagePNGpath := WriteTempFile(fileName, body)
 		defer RemoveTempFile(imagePNGpath)
@@ -64,26 +72,27 @@ func postIt(w http.ResponseWriter, r *http.Request) {
 
 		responseFromGoogle := PostToGoogleCloudVisionAPI(url, payloadJSONbytes)
 
-		theImageIs := ParseResponse(responseFromGoogle)
+		fmt.Println(responseFromGoogle)
 
-		//[]string
-		paramsToCheck := os.Getenv("CLOUD_VISION_MARMOT_CHECKER")
+		//theImageIs := ParseResponse(responseFromGoogle)
 
-		okay := CheckIfMatched(theImageIs, strings.Split(paramsToCheck, ","))
-		if okay {
-			//temp file originally uploaded; see above
-			PostImageToToadserver(imagePNGpath)
-		} else {
-			fmt.Printf("The image supplied is a %s which does not match any of %s", theImageIs, strings.Split(paramsToCheck, ","))
-			os.Exit(1)
-		}
+		/*
+			//[]string
+			paramsToCheck := os.Getenv("CLOUD_VISION_MARMOT_CHECKER")
 
+			okay := CheckIfMatched(theImageIs, strings.Split(paramsToCheck, ","))
+			if okay {
+				//temp file originally uploaded; see above
+				PostImageToToadserver(imagePNGpath)
+			} else {
+				fmt.Printf("The image supplied is a %s which does not match any of %s", theImageIs, strings.Split(paramsToCheck, ","))
+				os.Exit(1)
+			}
+		*/
 	}
 }
 
 // image must be in png format
-// adapted from:
-// https://www.socketloop.com/tutorials/golang-how-to-verify-uploaded-file-is-image-or-allowed-file-types
 func CheckIfPNG(imagePath string) bool {
 	var ok bool
 	file, err := os.Open(imagePath)
@@ -106,53 +115,44 @@ func CheckIfPNG(imagePath string) bool {
 }
 
 // format required for json payload to Cloud Vision
-// adapted from:
-// https://www.socketloop.com/tutorials/golang-encode-image-to-base64-example
 func ConvertToBase64(imagePath string) string {
-	imgFile, err := os.Open(imagePath)
+	imageBytes, err := ioutil.ReadFile(imagePath)
 	if err != nil {
 		fmt.Printf("error opening file: %v\n", err)
 		os.Exit(1)
 	}
-	defer imgFile.Close()
-
-	// create new buffer based on file size
-	//TODO catch err ... ?
-	fInfo, _ := imgFile.Stat()
-	var size int64 = fInfo.Size()
-	buf := make([]byte, size)
-
-	fReader := bufio.NewReader(imgFile)
-	fReader.Read(buf)
 
 	// convert the buffer bytes to base64 string
-	imgBase64str := base64.StdEncoding.EncodeToString(buf)
+	imgBase64str := base64.StdEncoding.EncodeToString(imageBytes)
 	return imgBase64str
-
 }
 
-// conform to the spec in the docs
+// conforms to the spec in the docs
 // https://cloud.google.com/vision/docs/getting-started
 // returns []byte for post request
+// modify "features" to get a richer response
+// see: https://cloud.google.com/vision/docs/concepts
+// for details; marshalling of the response
+// would need to be modified accordingly
 func ConstructJSONPayload(imgBase64string string) []byte {
-	jsonPayload := `{"requests":[{"image":{"content":"` + imgBase64string + `"},"features":[{"type":"LABEL_DETECTION","maxResults":1}]}]}`
+	jsonPayload := `{"requests":[{"image":{"content":"` + imgBase64string + `"},"features":[{"type":"LABEL_DETECTION","maxResults":3}]}]}`
 	return []byte(jsonPayload)
 }
 
-//check env var for key & fmt.Sprint
+// format URL with apiKey
 func ConstructURL(apiKey string) string {
-	url := fmt.Sprintf("https://vision.googleapis.com/v1/images:annotate?key=%s", apiKey)
-	return url
+	return fmt.Sprintf("https://vision.googleapis.com/v1/images:annotate?key=%s", apiKey)
 }
 
-//return the json response to be parsed later
+// POST with URL from above and jsonPayload
+// returns the whole json response to be parsed next
 func PostToGoogleCloudVisionAPI(url string, jsonBytes []byte) string {
-	request, err := http.NewRequest("GET", url, bytes.NewBuffer(jsonBytes))
+	fmt.Println("Posting to google cloud vision API")
+	request, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBytes))
 	if err != nil {
 		fmt.Printf("error creating request: %v\n", err)
 		os.Exit(1)
 	}
-
 	request.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
@@ -170,9 +170,9 @@ func PostToGoogleCloudVisionAPI(url string, jsonBytes []byte) string {
 		os.Exit(1)
 	}
 	return string(body)
-
 }
 
+// json.Unmarshal
 func ParseResponse(jsonString string) string {
 	return ""
 	// return "description" field from Google response
@@ -198,10 +198,13 @@ func WriteTempFile(fileName string, imageBody []byte) string {
 		fmt.Printf("error writing temp file: %v\n", err)
 		os.Exit(1)
 	}
-
 	return f.Name()
 }
 
 // removes the temp file after everything is done
 func RemoveTempFile(imagePath string) {
+	if err := os.Remove(imagePath); err != nil {
+		fmt.Printf("error removing file: %v\n", err)
+		os.Exit(1)
+	}
 }
