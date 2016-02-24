@@ -23,7 +23,7 @@ import (
 // if a match is found, file is posted to the toadserver
 // which is required to be running on the host.the
 // toadserver creates an index of the filename alongside
-// the IPFS hash of the file (on the chain) and adds the file to IPFS
+// the IPFS hash of the file (on the chain) and adds the file to IPFS.
 
 func main() {
 	fmt.Println("Initializing marmot checker")
@@ -171,7 +171,13 @@ func PostToGoogleCloudVisionAPI(url string, jsonBytes []byte) []byte {
 
 	body, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		fmt.Printf("error reading body: %v\n", err)
+		fmt.Printf("error reading response.Body: %v\n", err)
+		os.Exit(1)
+	}
+
+	if response.Status != "200 OK" {
+		fmt.Printf("bad status code (not 200), exiting: %s\n", response.Status)
+		fmt.Printf("response from Google:\n%s\n", string(body))
 		os.Exit(1)
 	}
 	return body //unmarshalled next
@@ -192,6 +198,8 @@ func ParseResponse(jsonBytes []byte) []string {
 		os.Exit(1)
 	}
 
+	//fmt.Printf("HM: %v\n", labels)
+
 	out := labels.Responses[0].(map[string]interface{})
 	epic := out["labelAnnotations"].([]interface{})
 
@@ -203,6 +211,7 @@ func ParseResponse(jsonBytes []byte) []string {
 		//XXX somehow a duplicate fourth slot sneaks in ... ?
 	}
 	return descriptions
+	//return []string{"cartoon"}
 }
 
 // compares images descriptors returned from google
@@ -255,9 +264,10 @@ func PostImageToToadserver(imagePNGpath string) string {
 		os.Exit(1)
 	}
 
-	formatName := strings.Split(imagePNGpath, "/")[2] // format because temp file
+	formatName := strings.Split(imagePNGpath, "/") // format because temp file
+	fnName := formatName[len(formatName)-1]
 	tsIP := checkEnv("TOADSERVER_HOST")
-	url := fmt.Sprintf("http://%s:11113/postfile/%s", tsIP, formatName)
+	url := fmt.Sprintf("http://%s:11113/postfile/%s", tsIP, fnName)
 	fmt.Printf("Posting to toadserver at url: %s\n", url)
 
 	request, err := http.NewRequest("POST", url, bytes.NewBuffer(imageBytes))
