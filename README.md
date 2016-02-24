@@ -17,7 +17,7 @@ export CLOUD_VISION_API_KEY=browser_key
 export CLOUD_VISION_MARMOT_CHECKS="rodent,groundhog,marmot,squirrel"
 export TOADSERVER_HOST=$(eris services inspect toadserver_srv NetworkSettings.IPAddress)
 ```
-where `browser_key` is got from Google, the second env var is a list of words to check the image description against, 
+where `browser_key` is got from Google, and the second env var is a list of words to check the image description against.
 
 The last one should be set after `run.sh` (see below) and is used to link to the toadserver running as a service to the marmot checker. This is normally abstracted away via servicification with the `eris` tool for which an example is forthcoming.
 
@@ -41,13 +41,12 @@ From another screen (or host):
 ```
 curl -X POST http://localhost:2332/postImage/marmot.png --data-binary "@marmot.png"
 ```
-where `marmot.png` is an image in your `pwd` that you'd like to know if it is indeed, a marmot (or any descriptor listed in `CLOUD_VISION_MARMOT_CHECKS`).
+where `marmot.png` is an image in your `pwd` that you'd like to know if it is indeed, a marmot (or any descriptor listed in `CLOUD_VISION_MARMOT_CHECKS`). If it is, in fact, a marmot, then it will be added to the linked toadserver.
 
-There should be a file added to the toadserver. See [this tutorial](https://docs.erisindustries.com/tutorials/advanced/servicesmaking/) for more information on checking that it worked.
+See [this tutorial](https://docs.erisindustries.com/tutorials/advanced/servicesmaking/) for more information on checking that it was added.
 
 ## With Docker
-
-When you `pwd` is this repo and assuming `run.sh` has been run:
+When your `pwd` is this repo and assuming `run.sh` has been run:
 ```
 docker build -t quay.io/eris/marmot .
 docker run -d -p 2332:2332 --link eris_service_toadserver_srv_1:ts -e "TOADSERVER_HOST=ts" -e "CLOUD_VISION_API_KEY=$CLOUD_VISION_API_KEY" -e "CLOUD_VISION_MARMOT_CHECKS=$CLOUD_VISION_MARMOT_CHECKS" quay.io/eris/marmot
