@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -18,10 +19,9 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/postImage/", PostImage)
 
-	port := "2332"
-	p := fmt.Sprintf(":%s", port)
-	fmt.Printf("Listening on port: %s\n", port)
-	http.ListenAndServe(p, mux)
+	port := ":2332"
+	fmt.Printf("Listening on port%s\n", port)
+	http.ListenAndServe(port, mux)
 }
 
 // receives a png image, & sends it to the Google Cloud Vision API
@@ -34,12 +34,14 @@ func main() {
 func PostImage(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 		fmt.Println("Receving POST request")
-		//get the
+
 		urlPathString := r.URL.Path[1:]
 		fileName := strings.Split(urlPathString, "/")[1]
 
-		fmt.Printf("Filename:\t\t%s\n", fileName)
+		fmt.Printf("Filename:%s\n", fileName)
 
+		// read body of the post (presumably a .png image
+		// coming in from `--data-binary` on the post request)
 		body, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			fmt.Printf("error reading file body: %v\n", err)
@@ -47,6 +49,9 @@ func PostImage(w http.ResponseWriter, r *http.Request) {
 		}
 		defer r.Body.Close()
 
+		// needed for some things here, and below;
+		// if image passes the checker, this var used
+		// for upload to toadserver
 		imagePNGpath := WriteTempFile(fileName, body)
 		defer RemoveTempFile(imagePNGpath)
 
@@ -56,43 +61,45 @@ func PostImage(w http.ResponseWriter, r *http.Request) {
 			os.Exit(1)
 		}
 
+		// used in the json payload, per Google's spec
 		imgBase64string := ConvertToBase64(imagePNGpath)
 
-		//returns []byte
+		// returns []byte for post to the cloud vision API
+		// contains fields that can be tweaked for image specifications
 		payloadJSONbytes := ConstructJSONPayload(imgBase64string)
 
-		env := "CLOUD_VISION_API_KEY"
-		apiKey := os.Getenv(env)
-		if apiKey == "" {
-			fmt.Println("Please set your cloud vision api key as the env var: %s\n", env)
-			os.Exit(1)
-		}
+		// env var for your api key. see the docs to make one
+		// func will exit if env is empty (very basic sanity check)
+		apiKey := checkEnv("CLOUD_VISION_API_KEY")
 
+		// assembles url from key
 		url := ConstructURL(apiKey)
 
+		// send it all away, await a response
 		responseFromGoogle := PostToGoogleCloudVisionAPI(url, payloadJSONbytes)
 
-		fmt.Println(responseFromGoogle)
+		// []string of descriptors returned by image analysis
+		imageDescriptors := ParseResponse(responseFromGoogle)
 
-		//theImageIs := ParseResponse(responseFromGoogle)
+		// comma seperated string of descriptors you want to match
+		toCheck := checkEnv("CLOUD_VISION_MARMOT_CHECKS")
 
-		/*
-			//[]string
-			paramsToCheck := os.Getenv("CLOUD_VISION_MARMOT_CHECKER")
-
-			okay := CheckIfMatched(theImageIs, strings.Split(paramsToCheck, ","))
-			if okay {
-				//temp file originally uploaded; see above
-				PostImageToToadserver(imagePNGpath)
-			} else {
-				fmt.Printf("The image supplied is a %s which does not match any of %s", theImageIs, strings.Split(paramsToCheck, ","))
-				os.Exit(1)
-			}
-		*/
+		// split the string to pass in a []string
+		// for comparison of two arrays
+		formattedOutput, okay := CheckIfMatched(imageDescriptors, strings.Split(toCheck, ","))
+		if okay {
+			fmt.Println(formattedOutput)
+			//temp file originally uploaded; see above
+			out := PostImageToToadserver(imagePNGpath)
+			fmt.Println(out)
+		} else {
+			fmt.Println(formattedOutput)
+		}
 	}
 }
 
 // image must be in png format
+// other format could be supported if desired
 func CheckIfPNG(imagePath string) bool {
 	var ok bool
 	file, err := os.Open(imagePath)
@@ -129,10 +136,10 @@ func ConvertToBase64(imagePath string) string {
 
 // conforms to the spec in the docs
 // https://cloud.google.com/vision/docs/getting-started
-// returns []byte for post request
+// returns []byte for upcoming post request
 // modify "features" to get a richer response
 // see: https://cloud.google.com/vision/docs/concepts
-// for details; marshalling of the response
+// for details; marshalling of the response (func ParseResponse())
 // would need to be modified accordingly
 func ConstructJSONPayload(imgBase64string string) []byte {
 	jsonPayload := `{"requests":[{"image":{"content":"` + imgBase64string + `"},"features":[{"type":"LABEL_DETECTION","maxResults":3}]}]}`
@@ -172,18 +179,102 @@ func PostToGoogleCloudVisionAPI(url string, jsonBytes []byte) string {
 	return string(body)
 }
 
-// json.Unmarshal
-func ParseResponse(jsonString string) string {
-	return ""
-	// return "description" field from Google response
+type Labels struct {
+	Responses []interface{} `json:"responses"`
 }
 
-func CheckIfMatched(theImageIs string, imagesToMatch []string) bool {
-	return false
+// Unmarshal things
+// hacky but works
+func ParseResponse(jsonString string) []string {
+	//TODO catch errors
+	bytes := []byte(jsonString)
+
+	var labels Labels
+	json.Unmarshal(bytes, &labels)
+
+	out := labels.Responses[0].(map[string]interface{})
+	epic := out["labelAnnotations"].([]interface{})
+
+	descriptions := make([]string, len(epic))
+	for i, maP := range epic {
+		theMap := maP.(map[string]interface{})
+		thingIactuallyWant := theMap["description"]
+		descriptions[i] = thingIactuallyWant.(string)
+		//XXX somehow a duplicate fourth slot sneaks in ... ?
+	}
+	return descriptions
 }
 
-func PostImageToToadserver(image string) error {
-	return nil
+func CheckIfMatched(imageDescriptors, toCheckAgainst []string) (string, bool) {
+	var output string
+	var ok bool
+
+	toCheck := make(map[string]bool)
+	for _, tca := range toCheckAgainst {
+		toCheck[tca] = true
+	}
+
+	for _, id := range imageDescriptors {
+		if toCheck[id] == true {
+			ok = true
+			break
+		} else {
+			ok = false
+		}
+	}
+
+	forBoth := fmt.Sprintf("Descriptors: %v\nTo Check: %v\n", imageDescriptors, toCheckAgainst)
+
+	if ok == true {
+		output = `Success! 
+The image has descriptors that matched with the supplied check parameters.
+` + forBoth + `
+Gonna post to toadserver...`
+	} else {
+		output = `Sad marmot :( 
+The image has descriptors that did not match with the supplied check parameters.
+` + forBoth + `
+Not posting to toadserver. Try again with a new image, or different check parameters.`
+	}
+	return output, ok
+}
+
+func PostImageToToadserver(imagePNGpath string) string {
+	imageBytes, err := ioutil.ReadFile(imagePNGpath)
+	if err != nil {
+		fmt.Printf("error opening file: %v\n", err)
+		os.Exit(1)
+	}
+
+	//TODO link proper to ts via env var
+	formatName := strings.Split(imagePNGpath, "/")[2]
+	url := fmt.Sprintf("http://0.0.0.0:11113/postfile/%s", formatName)
+	fmt.Printf("Posting to toadserver at url: %s\n", url)
+
+	request, err := http.NewRequest("POST", url, bytes.NewBuffer(imageBytes))
+	if err != nil {
+		fmt.Printf("error creating request: %v\n", err)
+		os.Exit(1)
+	}
+	//request.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+
+	response, err := client.Do(request)
+	if err != nil {
+		fmt.Printf("error posting to Google: %v\n", err)
+		os.Exit(1)
+	}
+	defer response.Body.Close()
+
+	body, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		fmt.Printf("error reading response from toadserver: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("response body contents:)\n%s\n", string(body))
+	return "Success posting to toadserver!"
 }
 
 // writes temp file for reading as needed
@@ -207,4 +298,14 @@ func RemoveTempFile(imagePath string) {
 		fmt.Printf("error removing file: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// exit if env is empty
+func checkEnv(env string) (envVar string) {
+	envVar = os.Getenv(env)
+	if envVar == "" {
+		fmt.Println("Please read the documentation and set this env var: %s\n", env)
+		os.Exit(1)
+	}
+	return envVar
 }
