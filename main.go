@@ -255,8 +255,9 @@ func PostImageToToadserver(imagePNGpath string) string {
 		os.Exit(1)
 	}
 
-	//TODO link proper to ts via env var
 	formatName := strings.Split(imagePNGpath, "/")[2] // format because temp file
+	// TODO link proper to ts via env var
+	// XXX required for dockerification/servicification
 	url := fmt.Sprintf("http://0.0.0.0:11113/postfile/%s", formatName)
 	fmt.Printf("Posting to toadserver at url: %s\n", url)
 
