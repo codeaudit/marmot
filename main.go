@@ -255,9 +255,9 @@ func PostImageToToadserver(imagePNGpath string) string {
 		os.Exit(1)
 	}
 
-	//TODO link proper to ts via env var
 	formatName := strings.Split(imagePNGpath, "/")[2] // format because temp file
-	url := fmt.Sprintf("http://0.0.0.0:11113/postfile/%s", formatName)
+	tsIP := checkEnv("TOADSERVER_HOST")
+	url := fmt.Sprintf("http://%s:11113/postfile/%s", tsIP, formatName)
 	fmt.Printf("Posting to toadserver at url: %s\n", url)
 
 	request, err := http.NewRequest("POST", url, bytes.NewBuffer(imageBytes))
