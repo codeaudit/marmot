@@ -13,6 +13,17 @@ import (
 
 // please see the Cloud Vision Documentation to get setup
 // https://cloud.google.com/vision/docs/getting-started
+// requires that you set CLOUD_VISION_API_KEY as an env var
+
+// server that receives a png image, & sends it to the
+// Google Cloud Vision API for processing.
+// returns 3 closest match results & checks
+// them against a []string of allowed match names set by:
+// CLOUD_VISION_MARMOT_CHECKS as env var with comma seperated strings
+// if a match is found, file is posted to the toadserver
+// which is required to be running on the host.the
+// toadserver creates an index of the filename alongside
+// the IPFS hash of the file (on the chain) and adds the file to IPFS
 
 func main() {
 	fmt.Println("Initializing marmot checker")
@@ -24,13 +35,6 @@ func main() {
 	http.ListenAndServe(port, mux)
 }
 
-// receives a png image, & sends it to the Google Cloud Vision API
-// for processing. returns closest match result & checks
-// it against a []string of allowed match names.
-// if a match is found, file is posted to the toadserver
-// which is required to be running on the host
-// the toadserver creates an index of the filename alongside
-// the IPFS hash of the file and adds the file to IPFS
 func PostImage(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 		fmt.Println("Receving POST request")
@@ -51,15 +55,12 @@ func PostImage(w http.ResponseWriter, r *http.Request) {
 
 		// needed for some things here, and below;
 		// if image passes the checker, this var used
-		// for upload to toadserver
+		// as name to register for upload to toadserver
 		imagePNGpath := WriteTempFile(fileName, body)
 		defer RemoveTempFile(imagePNGpath)
 
-		ok := CheckIfPNG(imagePNGpath)
-		if !ok {
-			fmt.Println("image must be of format .png")
-			os.Exit(1)
-		}
+		//exits if image is not .png
+		CheckIfPNG(imagePNGpath)
 
 		// used in the json payload, per Google's spec
 		imgBase64string := ConvertToBase64(imagePNGpath)
@@ -68,8 +69,8 @@ func PostImage(w http.ResponseWriter, r *http.Request) {
 		// contains fields that can be tweaked for image specifications
 		payloadJSONbytes := ConstructJSONPayload(imgBase64string)
 
-		// env var for your api key. see the docs to make one
-		// func will exit if env is empty (very basic sanity check)
+		// env var for your api key. see the google docs to make one
+		// func will exit if env is empty (simple sanity check)
 		apiKey := checkEnv("CLOUD_VISION_API_KEY")
 
 		// assembles url from key
@@ -98,10 +99,9 @@ func PostImage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// image must be in png format
+// ensure image is in png format
 // other format could be supported if desired
-func CheckIfPNG(imagePath string) bool {
-	var ok bool
+func CheckIfPNG(imagePath string) {
 	file, err := os.Open(imagePath)
 	if err != nil {
 		fmt.Printf("error opening file: %v\n", err)
@@ -113,12 +113,10 @@ func CheckIfPNG(imagePath string) bool {
 
 	filetype := http.DetectContentType(buff)
 
-	if filetype == "image/png" {
-		ok = true
-	} else {
-		ok = false
+	if filetype != "image/png" {
+		fmt.Println("image must be of format .png")
+		os.Exit(1)
 	}
-	return ok
 }
 
 // format required for json payload to Cloud Vision
@@ -153,7 +151,7 @@ func ConstructURL(apiKey string) string {
 
 // POST with URL from above and jsonPayload
 // returns the whole json response to be parsed next
-func PostToGoogleCloudVisionAPI(url string, jsonBytes []byte) string {
+func PostToGoogleCloudVisionAPI(url string, jsonBytes []byte) []byte {
 	fmt.Println("Posting to google cloud vision API")
 	request, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBytes))
 	if err != nil {
@@ -176,21 +174,23 @@ func PostToGoogleCloudVisionAPI(url string, jsonBytes []byte) string {
 		fmt.Printf("error reading body: %v\n", err)
 		os.Exit(1)
 	}
-	return string(body)
+	return body //unmarshalled next
 }
 
 type Labels struct {
 	Responses []interface{} `json:"responses"`
 }
 
-// Unmarshal things
+// Unmarshal response from Google
 // hacky but works
-func ParseResponse(jsonString string) []string {
-	//TODO catch errors
-	bytes := []byte(jsonString)
+// could break if API changes
+func ParseResponse(jsonBytes []byte) []string {
 
 	var labels Labels
-	json.Unmarshal(bytes, &labels)
+	if err := json.Unmarshal(jsonBytes, &labels); err != nil {
+		fmt.Printf("error unmarshalling response: %v\n", err)
+		os.Exit(1)
+	}
 
 	out := labels.Responses[0].(map[string]interface{})
 	epic := out["labelAnnotations"].([]interface{})
@@ -205,6 +205,10 @@ func ParseResponse(jsonString string) []string {
 	return descriptions
 }
 
+// compares images descriptors returned from google
+// to the multi-word string given as the following env var:
+// CLOUD_VISION_MARMOT_CHECKS
+// with comma seperated words
 func CheckIfMatched(imageDescriptors, toCheckAgainst []string) (string, bool) {
 	var output string
 	var ok bool
@@ -239,6 +243,11 @@ Not posting to toadserver. Try again with a new image, or different check parame
 	return output, ok
 }
 
+// requires a running toadserver: `eris services start toadserver`
+// and additional chain configuration: `eris services cat toadserver`
+// for more information. alternatively, you can `bash run.sh` the
+// script in this repository to configure and initialize
+// all the required dependencies.
 func PostImageToToadserver(imagePNGpath string) string {
 	imageBytes, err := ioutil.ReadFile(imagePNGpath)
 	if err != nil {
@@ -247,7 +256,7 @@ func PostImageToToadserver(imagePNGpath string) string {
 	}
 
 	//TODO link proper to ts via env var
-	formatName := strings.Split(imagePNGpath, "/")[2]
+	formatName := strings.Split(imagePNGpath, "/")[2] // format because temp file
 	url := fmt.Sprintf("http://0.0.0.0:11113/postfile/%s", formatName)
 	fmt.Printf("Posting to toadserver at url: %s\n", url)
 
@@ -256,29 +265,20 @@ func PostImageToToadserver(imagePNGpath string) string {
 		fmt.Printf("error creating request: %v\n", err)
 		os.Exit(1)
 	}
-	//request.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
 
-	response, err := client.Do(request)
+	_, err = client.Do(request) // response.Body will be  empty
 	if err != nil {
-		fmt.Printf("error posting to Google: %v\n", err)
-		os.Exit(1)
-	}
-	defer response.Body.Close()
-
-	body, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		fmt.Printf("error reading response from toadserver: %v\n", err)
+		fmt.Printf("error posting to toadserver: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("response body contents:)\n%s\n", string(body))
 	return "Success posting to toadserver!"
 }
 
 // writes temp file for reading as needed
-// used in conjunction with defer RemoveTempFile()
+// used in conjunction with defer RemoveTempFile() below
 func WriteTempFile(fileName string, imageBody []byte) string {
 	f, err := ioutil.TempFile("", fileName)
 	if err != nil {
@@ -301,6 +301,7 @@ func RemoveTempFile(imagePath string) {
 }
 
 // exit if env is empty
+// return the value from env
 func checkEnv(env string) (envVar string) {
 	envVar = os.Getenv(env)
 	if envVar == "" {
