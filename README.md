@@ -1,3 +1,5 @@
+[![Circle CI](https://circleci.com/gh/eris-ltd/marmot/tree/master.svg?style=svg)](https://circleci.com/gh/eris-ltd/marmot)
+
 # Marmot Image Checker
 This simple app was dreamt up after coming across [this TechCrunch article](http://techcrunch.com/2016/02/18/google-opens-its-cloud-vision-api-to-all-developers/). It take an image, asks the Google Cloud Vision API for three descriptions of the image, and compares those descriptions to a chosen list of words. If there is match, the image is added to the [toadserver](https://github.com/eris-ltd/toadserver). This is a WIP, experimental, and probably full of bugs.
 
@@ -15,7 +17,7 @@ This simple app was dreamt up after coming across [this TechCrunch article](http
 ```
 export CLOUD_VISION_API_KEY=browser_key
 export CLOUD_VISION_MARMOT_CHECKS="rodent,groundhog,marmot,squirrel,cartoon"
-export TOADSERVER_HOST=$(eris services inspect toadserver_srv NetworkSettings.IPAddress)
+export TOADSERVER_HOST=$(eris services inspect toadserver NetworkSettings.IPAddress)
 ```
 where `browser_key` is got from Google, and the second env var is a list of words to check the image description against.
 
@@ -50,7 +52,7 @@ See [this tutorial](https://docs.erisindustries.com/tutorials/advanced/servicesm
 When your `pwd` is this repo and assuming `run.sh` has been run:
 ```
 docker build -t quay.io/eris/marmot .
-docker run -d -p 2332:2332 --link eris_service_toadserver_srv_1:ts -e "TOADSERVER_HOST=ts" -e "CLOUD_VISION_API_KEY=$CLOUD_VISION_API_KEY" -e "CLOUD_VISION_MARMOT_CHECKS=$CLOUD_VISION_MARMOT_CHECKS" quay.io/eris/marmot
+docker run -d -p 2332:2332 --link eris_service_toadserver_1:ts -e "TOADSERVER_HOST=ts" -e "CLOUD_VISION_API_KEY=$CLOUD_VISION_API_KEY" -e "CLOUD_VISION_MARMOT_CHECKS=$CLOUD_VISION_MARMOT_CHECKS" quay.io/eris/marmot
 ```
 Then **Check An Image**.
 

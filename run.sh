@@ -11,7 +11,7 @@ echo "$CHAIN_NAME"
 echo ""
 
 echo "Setting service name:"
-SERVICE_NAME=toadserver_srv
+SERVICE_NAME=toadserver
 echo "$SERVICE_NAME"
 echo ""
 
