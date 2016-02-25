@@ -1,0 +1,33 @@
+# This is a TOML config file.
+# For more information, see https://github.com/toml-lang/toml
+
+name = "marmot"
+description = """
+This app takes an image via its only endpoint, asks the Google Cloud Vision API for three descriptions of the image, and compares those descriptions to a chosen list of words. If there is a match, the image is added to the toadserver. This is a WIP, experimental, and probably full of bugs.
+
+The goal is to incentivize the submission of content in a way that is self-organizing by rewarding accurate submissions.
+"""
+
+status = "pre-alpha"
+
+[service]
+name = "marmot"
+image = "quay.io/eris/marmot"
+ports = [ "2332:2332" ]
+environment = [
+	# XXX env var must be hardcoded
+	"CLOUD_VISION_API_KEY=$CLOUD_VISION_API_KEY",
+	"CLOUD_VISION_MARMOT_CHECKS=rodent,groundhog,marmot,squirrel,cartoon",
+	"TOADSERVER_HOST=ts"
+]
+links = [ "eris_service_toadserver_srv_1:ts" ]
+
+[maintainer]
+name = "Zach Ramsay"
+email = "zach@erisindustries.com"
+
+[location]
+dockerfile = "https://github.com/eris-ltd/marmot/blob/master/Dockerfile"
+repository = "https://github.com/eris-ltd/marmot"
+website = ""
+
