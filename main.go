@@ -198,8 +198,6 @@ func ParseResponse(jsonBytes []byte) []string {
 		os.Exit(1)
 	}
 
-	//fmt.Printf("HM: %v\n", labels)
-
 	out := labels.Responses[0].(map[string]interface{})
 	epic := out["labelAnnotations"].([]interface{})
 
@@ -211,7 +209,6 @@ func ParseResponse(jsonBytes []byte) []string {
 		//XXX somehow a duplicate fourth slot sneaks in ... ?
 	}
 	return descriptions
-	//return []string{"cartoon"}
 }
 
 // compares images descriptors returned from google
