@@ -14,7 +14,7 @@ This simple app was dreamt up after coming across [this TechCrunch article](http
 ### Environment Variables
 ```
 export CLOUD_VISION_API_KEY=browser_key
-export CLOUD_VISION_MARMOT_CHECKS="rodent,groundhog,marmot,squirrel"
+export CLOUD_VISION_MARMOT_CHECKS="rodent,groundhog,marmot,squirrel,cartoon"
 export TOADSERVER_HOST=$(eris services inspect toadserver_srv NetworkSettings.IPAddress)
 ```
 where `browser_key` is got from Google, and the second env var is a list of words to check the image description against.
@@ -37,11 +37,12 @@ go run main.go
 to start the marmot checker.
 
 ## Check An Image
-From another screen (or host):
+From another screen (or host) from within this repo:
 ```
-curl -X POST http://localhost:2332/postImage/marmot.png --data-binary "@marmot.png"
+curl -X POST http://localhost:2332/postImage/dougdocker.png --data-binary "@dougdocker.png"
 ```
-where `marmot.png` is an image in your `pwd` that you'd like to know if it is indeed, a marmot (or any descriptor listed in `CLOUD_VISION_MARMOT_CHECKS`). If it is, in fact, a marmot, then it will be added to the linked toadserver.
+where `dougdocker.png` is the image in this repo. It is identified by Google as a "cartoon", see 
+`CLOUD_VISION_MARMOT_CHECKS above. Because it's a match, the image will be added to IPFS via the toadserver.
 
 See [this tutorial](https://docs.erisindustries.com/tutorials/advanced/servicesmaking/) for more information on checking that it was added.
 
@@ -51,12 +52,15 @@ When your `pwd` is this repo and assuming `run.sh` has been run:
 docker build -t quay.io/eris/marmot .
 docker run -d -p 2332:2332 --link eris_service_toadserver_srv_1:ts -e "TOADSERVER_HOST=ts" -e "CLOUD_VISION_API_KEY=$CLOUD_VISION_API_KEY" -e "CLOUD_VISION_MARMOT_CHECKS=$CLOUD_VISION_MARMOT_CHECKS" quay.io/eris/marmot
 ```
-Then *Check An Image*.
+Then **Check An Image**.
 
 ## With an Eris Service
-```
-Tomorrow
-```
+- build the image as above
+- `cp marmot.toml ~/.eris/services/`
+- `eris services edit marmot`
+- replace `$CLOUD_VISION_API_KEY` with your api key
+- `bash run.sh`
+- `eris services start marmot`
 
 ## Code Examples
 Coming Soon!
@@ -65,8 +69,6 @@ Coming Soon!
 This would be useful, say, to archive and index digital content that only meets certain parameters. I imagine a future where budding school-aged scientists will submit images of insects they've found out in the field, alongside a geo-tag, to a chain that aggregates insect populations.
 
 ## TODO
-- Dockerfile
-- service-ify
 - integration tests
 - unit tests
 - sane flexibility for "features"
