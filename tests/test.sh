@@ -190,6 +190,7 @@ test_teardown(){
     then
       eris services stop -rx keys &>/dev/null
     fi
+    rm dougtest.png
     rm -rf $HOME/.eris/scratch/data/marmot-tests-*
     rm -rf $chain_dir
   else
