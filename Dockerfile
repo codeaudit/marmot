@@ -8,9 +8,6 @@ ENV BINARY_PATH  $NAME
 ENV CLONE_PATH   $GOPATH/src/github.com/$REPO
 ENV INSTALL_PATH $INSTALL_BASE/$NAME
 
-# for binary
-ENV INSTALL_BASE /usr/local/bin
-
 RUN mkdir -p $CLONE_PATH
 
 #for local buildz
@@ -20,7 +17,7 @@ WORKDIR $CLONE_PATH
 
 #RUN git clone -q https://github.com/$REPO $CLONE_PATH
 #RUN git checkout -q $BRANCH
-RUN cd $CLONE_PATH && go build -o $INSTALL_BASE/marmot
+RUN cd $CLONE_PATH && go build -o $INSTALL_PATH
 
 USER $USER
 WORKDIR $ERIS

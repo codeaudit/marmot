@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -56,8 +57,8 @@ func PostImage(w http.ResponseWriter, r *http.Request) {
 		// needed for some things here, and below;
 		// if image passes the checker, this var used
 		// as name to register for upload to toadserver
-		imagePNGpath := WriteTempFile(fileName, body)
-		defer RemoveTempFile(imagePNGpath)
+		imagePNGpath := WriteFile(fileName, body)
+		defer RemoveFile(imagePNGpath)
 
 		//exits if image is not .png
 		CheckIfPNG(imagePNGpath)
@@ -275,32 +276,34 @@ func PostImageToToadserver(imagePNGpath string) string {
 
 	client := &http.Client{}
 
-	_, err = client.Do(request) // response.Body will be  empty
+	response, err := client.Do(request) // response.Body will be  empty
 	if err != nil {
 		fmt.Printf("error posting to toadserver: %v\n", err)
 		os.Exit(1)
 	}
+	defer response.Body.Close()
 
 	return "Success posting to toadserver!"
 }
 
 // writes temp file for reading as needed
 // used in conjunction with defer RemoveTempFile() below
-func WriteTempFile(fileName string, imageBody []byte) string {
-	f, err := ioutil.TempFile("", fileName)
+func WriteFile(fileName string, imageBody []byte) string {
+	/*f, err := ioutil.TempFile("", fileName)
 	if err != nil {
 		fmt.Printf("error creating temp file: %v\n", err)
 		os.Exit(1)
-	}
-	if err := ioutil.WriteFile(f.Name(), imageBody, 0777); err != nil {
+	}*/
+	tempPath := filepath.Join("/tmp", fileName)
+	if err := ioutil.WriteFile(tempPath, imageBody, 0777); err != nil {
 		fmt.Printf("error writing temp file: %v\n", err)
 		os.Exit(1)
 	}
-	return f.Name()
+	return tempPath
 }
 
 // removes the temp file after everything is done
-func RemoveTempFile(imagePath string) {
+func RemoveFile(imagePath string) {
 	if err := os.Remove(imagePath); err != nil {
 		fmt.Printf("error removing file: %v\n", err)
 		os.Exit(1)

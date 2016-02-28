@@ -20,7 +20,7 @@ environment = [
 	"CLOUD_VISION_MARMOT_CHECKS=rodent,groundhog,marmot,squirrel,cartoon",
 	"TOADSERVER_HOST=ts"
 ]
-links = [ "eris_service_toadserver_srv_1:ts" ]
+links = [ "eris_service_toadserver_1:ts" ]
 
 [maintainer]
 name = "Zach Ramsay"
